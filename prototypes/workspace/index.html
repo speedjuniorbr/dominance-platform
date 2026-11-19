@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOMINANCE Workspace — protótipo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: app de uma tela; barra lateral clara de conversas + coluna central de leitura (~760px) com compositor fixo no rodapé. */
+:root{
+  --night:#0B1324; --cobalt:#2342C8; --gold:#C9962F; --gold-ink:#8A6417; --steel:#8A94A6; --mist:#F3F5F9;
+  --bg:#FFFFFF; --side:#F3F5F9; --ink:#0B1324; --muted:#556074; --line:#DCE1EA; --soft:#EEF1F6;
+  --accent:#2342C8; --accent-soft:#E8ECFD; --gold-soft:#F7EEDB; --warn:#A86200; --warn-soft:#FBEFD9; --crit:#B3262D; --crit-soft:#FBE5E6; --ok:#1D7A4C; --ok-soft:#E2F3EA;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --body:"IBM Plex Sans","Segoe UI",Roboto,Arial,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1626; --side:#0A111F; --ink:#E6EAF2; --muted:#98A3B7; --line:#233049; --soft:#152036;
+  --accent:#8FA3FF; --accent-soft:#1B2550; --gold-ink:#E2B45E; --gold-soft:#2D2513; --warn:#F0A63E; --warn-soft:#2C2010; --crit:#F27880; --crit-soft:#2E1517; --ok:#52C48E; --ok-soft:#12291F; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0E1626; --side:#0A111F; --ink:#E6EAF2; --muted:#98A3B7; --line:#233049; --soft:#152036;
+  --accent:#8FA3FF; --accent-soft:#1B2550; --gold-ink:#E2B45E; --gold-soft:#2D2513; --warn:#F0A63E; --warn-soft:#2C2010; --crit:#F27880; --crit-soft:#2E1517; --ok:#52C48E; --ok-soft:#12291F; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+p{margin:0}
+.app{display:grid;grid-template-columns:272px 1fr;height:100%}
+/* sidebar */
+.side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 6px;text-decoration:none;color:inherit}
+.brand b{font-family:var(--display);font-stretch:125%;font-weight:800;letter-spacing:.1em;font-size:14px}
+.brand span{font-family:var(--display);font-weight:500;font-size:14px;color:var(--muted)}
+.newchat{margin:12px 14px 6px;display:flex;align-items:center;gap:8px;justify-content:center;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 12px;cursor:pointer;font-weight:500}
+.newchat:hover{border-color:var(--accent)}
+.nav{display:flex;flex-direction:column;padding:6px 10px;gap:2px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:14px}
+.nav a:hover{background:var(--soft)}
+.nav a.on{background:var(--soft);font-weight:500}
+.grp{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;padding:14px 20px 4px}
+.convs{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:1px}
+.convs button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:0;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px;color:inherit;width:100%}
+.convs button:hover,.convs button.on{background:var(--soft)}
+.convs button span.t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dotlocal{width:7px;height:7px;border-radius:50%;background:var(--gold);flex:none}
+.dotcloud{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.me{border-top:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.me .who{display:flex;align-items:center;gap:10px}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--night);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:600;flex:none}
+.me select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:5px 8px;font-size:13px}
+.me label{font-size:12px;color:var(--muted)}
+/* main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.banner{background:var(--gold-soft);color:var(--gold-ink);font-size:12.5px;padding:6px 20px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.banner a{color:inherit}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.topbar h1{font-size:16px;font-weight:600;font-family:var(--body)}
+.shield{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;border:1px solid var(--line);border-radius:99px;padding:4px 11px;color:var(--muted);background:var(--bg);cursor:pointer}
+.shield:hover{border-color:var(--accent);color:var(--ink)}
+.view{flex:1;overflow-y:auto;min-height:0}
+.col{max-width:780px;margin:0 auto;padding:28px 24px 24px;display:flex;flex-direction:column;gap:22px}
+.empty{padding-top:6vh;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.empty h2{font-size:30px;font-weight:700;font-stretch:110%}
+.empty p{color:var(--muted);max-width:52ch}
+.starters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%;margin-top:10px}
+.starters button{text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 14px;cursor:pointer;font-size:14px;display:flex;flex-direction:column;gap:4px}
+.starters button:hover{border-color:var(--accent)}
+.starters small{color:var(--muted);font-size:12.5px}
+.msg{display:flex;flex-direction:column;gap:6px}
+.msg.user{align-items:flex-end}
+.bubble{background:var(--soft);border-radius:14px;padding:10px 14px;max-width:85%;white-space:pre-wrap;overflow-wrap:anywhere}
+.answer{display:flex;gap:12px;align-items:flex-start}
+.answer .mk{flex:none;margin-top:3px}
+.answer .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.answer .txt{white-space:pre-wrap;overflow-wrap:anywhere}
+.answer .txt code{font-family:var(--mono);font-size:13px;background:var(--soft);padding:1px 5px;border-radius:4px}
+.answer pre{background:var(--night);color:#DCE3F0;font-family:var(--mono);font-size:13px;padding:12px 14px;border-radius:10px;overflow-x:auto;margin:0;white-space:pre}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:500;white-space:nowrap}
+.pill.local{background:var(--gold-soft);color:var(--gold-ink)}
+.pill.cloud{background:var(--accent-soft);color:var(--accent)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.crit{background:var(--crit-soft);color:var(--crit)}
+.pill.neutral{background:var(--soft);color:var(--muted)}
+.linkbtn{background:none;border:0;color:var(--accent);cursor:pointer;font-size:12.5px;padding:2px 4px;text-decoration:underline}
+.path{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:4px;font-size:13px}
+.path div{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center}
+.path .n{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.blocked{border:1px solid var(--crit);background:var(--crit-soft);color:var(--crit);border-radius:12px;padding:10px 14px;font-size:14px}
+.caret::after{content:"▍";animation:blink 1s steps(1) infinite;color:var(--muted)}
+@keyframes blink{50%{opacity:0}}
+/* composer */
+.composer-wrap{border-top:1px solid var(--line);background:var(--bg)}
+.composer{max-width:780px;margin:0 auto;padding:12px 24px 16px;display:flex;flex-direction:column;gap:8px}
+.box{border:1px solid var(--line);border-radius:16px;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(11,19,36,.04)}
+.box:focus-within{border-color:var(--accent)}
+.box textarea{border:0;background:transparent;resize:none;padding:14px 16px 6px;min-height:56px;max-height:200px;outline:none}
+.box .row{display:flex;align-items:center;gap:8px;padding:6px 10px 10px;flex-wrap:wrap}
+.iconbtn{border:1px solid var(--line);background:var(--bg);border-radius:9px;width:34px;height:34px;display:grid;place-items:center;cursor:pointer;position:relative}
+.iconbtn:hover{border-color:var(--accent)}
+.iconbtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.modelsel{border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:6px 10px;font-size:13.5px;max-width:260px}
+.send{margin-left:auto;background:var(--night);color:#fff;border:0;border-radius:10px;height:34px;padding:0 14px;cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px}
+:root[data-theme="dark"] .send{background:var(--accent);color:#0A101D}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .send{background:var(--accent);color:#0A101D}}
+.send:disabled{opacity:.45;cursor:not-allowed}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12.5px;background:var(--soft)}
+.chip button{background:none;border:0;cursor:pointer;color:var(--muted);padding:0 2px}
+.hint{font-size:12.5px;display:flex;gap:8px;align-items:center;min-height:20px;color:var(--muted)}
+.hint.warn{color:var(--warn)} .hint.local{color:var(--gold-ink)} .hint.crit{color:var(--crit)}
+.err{color:var(--crit);font-size:12.5px}
+/* assistants & usage */
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.card p{color:var(--muted);font-size:14px}
+.card .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto}
+.btn{border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:7px 13px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--night);color:#fff;border-color:var(--night)}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.kpi{border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi small{color:var(--muted);font-size:12.5px}
+.kpi b{display:block;font-family:var(--display);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.track{height:9px;border-radius:99px;background:var(--soft);overflow:hidden;border:1px solid var(--line)}
+.track span{display:block;height:100%;background:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;padding:7px 8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid var(--line)}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+.pol{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.pol:last-child{border-bottom:0}
+.pol p{color:var(--muted);font-size:13.5px}
+.overlay{position:fixed;inset:0;background:rgba(6,11,22,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+.overlay.on{display:flex}
+.modal{background:var(--bg);border:1px solid var(--line);border-radius:16px;max-width:520px;width:100%;padding:22px;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto}
+.menu-btn{display:none}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;inset:0 auto 0 0;width:280px;z-index:15;transform:translateX(-100%);transition:transform .2s}
+  .side.open{transform:none;box-shadow:0 0 0 100vmax rgba(6,11,22,.4)}
+  .menu-btn{display:grid}
+  .starters,.grid,.kpis{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side" aria-label="Conversas e navegação">
+    <a class="brand" href="#conversa" aria-label="DOMINANCE Workspace">
+      <svg width="28" height="28" viewBox="0 0 100 100" aria-hidden="true"><path d="M19 12 V38 M19 62 V88" stroke="currentColor" stroke-width="14" fill="none"/><path d="M12 19 H50 A31 31 0 0 1 50 81 H12" stroke="currentColor" stroke-width="14" fill="none"/><circle cx="50" cy="50" r="9" fill="#C9962F"/></svg>
+      <b>DOMINANCE</b><span>Workspace</span>
+    </a>
+    <button class="newchat" id="newchat" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Nova conversa
+    </button>
+    <nav class="nav" aria-label="Seções">
+      <a href="#conversa" data-v="conversa">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg> Conversas</a>
+      <a href="#agentes" data-v="agentes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg> Agentes e conectores</a>
+      <a href="#meu-uso" data-v="meu-uso">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Meu uso e regras</a>
+    </nav>
+    <div class="grp">Recentes</div>
+    <div class="convs" id="convs"></div>
+    <div class="me">
+      <div class="who"><span class="avatar" id="av">AR</span><div><div id="me-name" style="font-weight:500;font-size:14px">Ana Ribeiro</div><div id="me-team" style="font-size:12.5px;color:var(--muted)">Jurídico</div></div></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)"><svg width="14" height="14" viewBox="0 0 100 100" aria-hidden="true"><defs><clipPath id="tp"><path d="M12 12 H50 A38 38 0 0 1 50 88 H12 Z"/></clipPath></defs><g clip-path="url(#tp)"><rect x="12" y="12" width="80" height="20" fill="#E07B39"/><rect x="12" y="40" width="80" height="20" fill="#3D5BE0"/><rect x="12" y="68" width="80" height="20" fill="#2E9E6B"/></g></svg> Parte da DOMINANCE® Platform</div>
+      <label for="as">Ver o protótipo como</label>
+      <select id="as">
+        <option value="ana">Ana Ribeiro · Jurídico</option>
+        <option value="carla">Carla Souza · Comercial</option>
+        <option value="diego">Diego Alves · Atendimento</option>
+      </select>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="banner"><span>Protótipo navegável do DOMINANCE Workspace. Respostas simuladas; nada é enviado a modelos reais.</span><a href="../governance/index.html">Abrir o console de governança</a></div>
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Abrir menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <h1 id="title">Nova conversa</h1>
+      </div>
+      <button class="shield" id="shield" type="button">
+        <svg width="14" height="14" viewBox="0 0 100 100" aria-hidden="true"><defs><clipPath id="sc"><path d="M12 12 H50 A38 38 0 0 1 50 88 H12 Z"/></clipPath></defs><g clip-path="url(#sc)"><rect x="12" y="12" width="80" height="20" fill="currentColor"/><rect x="12" y="40" width="80" height="20" fill="#C9962F"/><rect x="12" y="68" width="80" height="20" fill="currentColor"/></g></svg>
+        <span id="shield-txt">Protegido pelo DOMINANCE</span>
+      </button>
+    </header>
+    <main class="view" id="view" tabindex="-1"></main>
+    <div class="composer-wrap" id="composer-wrap">
+      <form class="composer" id="composer" novalidate>
+        <div class="box">
+          <div class="chips" id="chips"></div>
+          <label for="input" class="sr" style="position:absolute;left:-9999px">Mensagem</label>
+          <textarea id="input" rows="2" placeholder="Pergunte, peça um rascunho ou anexe um documento"></textarea>
+          <div class="row">
+            <span class="iconbtn" title="Anexar arquivo"><input type="file" id="file" aria-label="Anexar arquivo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 11.5l-8.5 8.5a5 5 0 01-7-7L14 4.5a3.5 3.5 0 015 5L10.5 18a2 2 0 01-3-3L15 7.5"/></svg></span>
+            <label for="model" style="position:absolute;left:-9999px">Modelo</label>
+            <select id="model" class="modelsel"></select>
+            <button class="send" id="send" type="submit" disabled>Enviar <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+        <div class="hint" id="hint" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ===== Dados simulados (mesmo contrato do console: /v1/chat/completions, /v1/models, /v1/admin/*) ===== */
+const MODELS = {
+  'dominance-rapido':     { nome: 'Rápido', modelo: 'llama-3.1-8b-instruct', local: true,  pin: .05, pout: .05 },
+  'dominance-local-pro':  { nome: 'Avançado', modelo: 'qwen2.5-32b-instruct', local: true,  pin: .12, pout: .12 },
+  'dominance-raciocinio': { nome: 'Raciocínio', modelo: 'claude-sonnet', local: false, pin: 3, pout: 15 },
+  'dominance-geral':      { nome: 'Geral', modelo: 'gpt-4o', local: false, pin: 2.5, pout: 10 },
+  'dominance-economico':  { nome: 'Econômico', modelo: 'gpt-4o-mini', local: false, pin: .15, pout: .6 },
+  'dominance-multimodal': { nome: 'Multimodal', modelo: 'gemini-flash', local: false, pin: .3, pout: 2.5 }
+};
+const USERS = {
+  ana:   { nome: 'Ana Ribeiro', ini: 'AR', equipe: 'Jurídico', modelos: ['dominance-rapido', 'dominance-local-pro', 'dominance-raciocinio'], sensivelLocal: true, orc: { usado: 10.98, limite: 20 }, tokens: 1840000, local: .86 },
+  carla: { nome: 'Carla Souza', ini: 'CS', equipe: 'Comercial', modelos: ['dominance-geral', 'dominance-economico', 'dominance-rapido', 'dominance-multimodal'], sensivelLocal: false, orc: { usado: 23.62, limite: 25 }, tokens: 2310000, local: .21 },
+  diego: { nome: 'Diego Alves', ini: 'DA', equipe: 'Atendimento', modelos: ['dominance-rapido', 'dominance-economico', 'dominance-local-pro'], sensivelLocal: false, orc: { usado: 4.09, limite: 10 }, tokens: 3020000, local: .74 }
+};
+const ASSISTANTS = [
+  { id: 'contratos', nome: 'Analista de contratos', desc: 'Lê contratos e aponta riscos, prazos e cláusulas fora do padrão da empresa.', equipe: 'Jurídico', alias: 'dominance-local-pro', base: 'Modelos de contrato do Jurídico (12 documentos)' },
+  { id: 'redator', nome: 'Redator comercial', desc: 'Escreve propostas, e-mails e posts no tom da marca, com dados de clientes mascarados.', equipe: 'Comercial', alias: 'dominance-geral', base: 'Guia de tom de voz e catálogo de serviços' },
+  { id: 'atendimento', nome: 'Atendimento ao cliente', desc: 'Responde dúvidas de clientes com base nas políticas internas de troca, prazo e garantia.', equipe: 'Atendimento', alias: 'dominance-rapido', base: 'Políticas de atendimento (8 documentos)' },
+  { id: 'resumo', nome: 'Resumidor de reuniões', desc: 'Transforma anotações ou transcrições em resumo, decisões e próximos passos.', equipe: 'Todas', alias: 'dominance-rapido', base: 'Sem base de conhecimento' }
+];
+const CONNECTORS = [
+  ['Documentos corporativos', 'Pastas de rede e repositório de documentos da organização.', 'conectado', '12.480 arquivos'],
+  ['Base de contratos', 'Contratos e minutas do Jurídico, com controle de acesso por equipe.', 'conectado', '1.204 documentos'],
+  ['ERP da empresa', 'Consulta a pedidos, estoque e clientes, somente leitura.', 'conectado', 'atualizado a cada hora'],
+  ['E-mail corporativo', 'Leitura de mensagens e rascunhos, com aprovação antes de enviar.', 'disponível', 'aguardando liberação']
+];
+const SEED = {
+  ana: [
+    { id: 's1', titulo: 'Riscos do contrato com fornecedor de TI', local: true, msgs: [
+      { r: 'user', t: 'Quais os principais riscos da cláusula de rescisão do contrato confidencial com o fornecedor de TI?' },
+      { r: 'bot', t: 'Três pontos merecem atenção:\n\n1. Multa rescisória sem teto: a cláusula 14.2 prevê 30% do valor remanescente, sem limite. Vale propor um teto de 3 mensalidades.\n2. Aviso prévio assimétrico: 30 dias para o fornecedor e 90 para a contratante.\n3. Devolução de dados: não há prazo nem formato para a entrega dos dados ao fim do contrato, o que conflita com a política de LGPD.', alias: 'dominance-local-pro', aviso: 'Conteúdo sensível: processado na base local', tin: 1240, tout: 310 } ] },
+    { id: 's2', titulo: 'Checklist de due diligence', local: true, msgs: [
+      { r: 'user', t: 'Monte um checklist curto de due diligence para contratar um fornecedor de software.' },
+      { r: 'bot', t: 'Checklist em cinco blocos: regularidade fiscal e societária; segurança da informação e certificações; tratamento de dados pessoais e suboperadores; continuidade e plano de saída; referências de clientes semelhantes.', alias: 'dominance-rapido', tin: 180, tout: 140 } ] }
+  ],
+  carla: [
+    { id: 's3', titulo: 'Proposta para indústria têxtil', local: false, msgs: [
+      { r: 'user', t: 'Escreva a abertura de uma proposta para a Têxtil Aurora, contato Marcos, e-mail [E-MAIL_1].' },
+      { r: 'bot', t: 'Prezado Marcos,\n\nAgradecemos a conversa da última semana. Preparamos esta proposta para apoiar a Têxtil Aurora a reduzir o tempo de resposta comercial com assistentes de IA governados, sem expor dados de clientes.', alias: 'dominance-geral', aviso: 'Dados pessoais mascarados', tin: 260, tout: 120 } ] }
+  ],
+  diego: [
+    { id: 's4', titulo: 'Política de troca em 3 tópicos', local: true, msgs: [
+      { r: 'user', t: 'Resuma em três tópicos as regras de troca de produto.' },
+      { r: 'bot', t: '• Troca em até 30 dias com nota fiscal.\n• Produto sem uso e na embalagem original.\n• Defeito de fabricação: troca imediata, sem prazo mínimo.', alias: 'dominance-rapido', tin: 90, tout: 70 } ] }
+  ]
+};
+
+/* ===== Estado ===== */
+const S = { user: 'ana', conv: null, convs: JSON.parse(JSON.stringify(SEED)), alias: 'auto', anexo: null, assistente: null, busy: false, view: 'conversa', reqLog: [] };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const usd = v => 'US$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: v < 1 ? 4 : 2, maximumFractionDigits: v < 1 ? 4 : 2 });
+const nf = new Intl.NumberFormat('pt-BR');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wait = ms => new Promise(r => setTimeout(r, reduced ? 20 : ms));
+const U = () => USERS[S.user];
+
+const RX = [['CPF', /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g], ['CNPJ', /\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g], ['E-MAIL', /[\w.+-]+@[\w-]+\.[\w.]+/g], ['TELEFONE', /\(?\b\d{2}\)?\s?9?\d{4}-?\d{4}\b/g]];
+const SENS = /\b(contrato|processo|sigilos[oa]|confidencial|liminar|parecer|cl[aá]usula)\b/i;
+function scan(t) { const found = {}; let out = t;
+  for (const [k, rx] of [RX[1], RX[0], RX[2], RX[3]]) out = out.replace(rx, () => { found[k] = (found[k] || 0) + 1; return `[${k}_${found[k]}]`; });
+  return { out, found, n: Object.values(found).reduce((a, b) => a + b, 0), sens: SENS.test(t) }; }
+function route(text, chosen) {
+  const u = U(), s = scan(text), sensitive = s.n > 0 || s.sens || !!S.anexo;
+  let alias = chosen, auto = chosen === 'auto', aviso = [];
+  if (auto) {
+    if (sensitive && u.sensivelLocal) { alias = 'dominance-local-pro'; aviso.push('Conteúdo sensível: processado na base local'); }
+    else if (text.length < 140 && !/\b(analis|compar|estrat|plano|arquitet)/i.test(text)) alias = u.modelos.includes('dominance-rapido') ? 'dominance-rapido' : u.modelos[0];
+    else alias = ['dominance-raciocinio', 'dominance-geral', 'dominance-local-pro'].find(a => u.modelos.includes(a)) || u.modelos[0];
+  }
+  if (!u.modelos.includes(alias)) return { blocked: `Sua equipe (${u.equipe}) não tem acesso ao modelo ${MODELS[alias].nome}. Peça liberação ao gestor ou use o modo Automático.` };
+  if (u.orc.usado >= u.orc.limite) return { blocked: `O orçamento mensal da equipe ${u.equipe} foi atingido. O gestor pode ampliar o limite no console.` };
+  if (sensitive && u.sensivelLocal && !MODELS[alias].local) { alias = 'dominance-local-pro'; aviso.push('Conteúdo sensível: processado na base local'); }
+  let enviado = text;
+  if (!MODELS[alias].local && s.n) { enviado = s.out; aviso.push('Dados pessoais mascarados'); }
+  if (MODELS[alias].local && sensitive && !aviso.length) aviso.push('Processado na base local');
+  return { alias, auto, aviso: aviso.join(' · '), enviado, s };
+}
+
+/* ===== Respostas simuladas ===== */
+function answer(text, alias) {
+  const t = text.toLowerCase();
+  if (/c[oó]digo|python|api|fun[cç][aã]o|sql/.test(t)) return { txt: 'Segue um exemplo de chamada ao DOMINANCE a partir de Python. O aplicativo só troca a URL e a chave:', code: 'from openai import OpenAI\n\nclient = OpenAI(base_url="https://api.dominance.app/v1",\n                api_key="dmn_live_…")\n\nr = client.chat.completions.create(\n    model="dominance-rapido",\n    messages=[{"role": "user", "content": "Olá"}])\nprint(r.choices[0].message.content)' };
+  if (/e-?mail|mensagem|carta/.test(t)) return { txt: 'Rascunho:\n\nOlá,\n\nObrigado pelo retorno. Conforme combinamos, envio em anexo a proposta revisada, já com os prazos ajustados. Fico à disposição para uma conversa rápida nesta semana, se fizer sentido.\n\nAbraço,' };
+  if (/contrato|cl[aá]usula|rescis|jur[ií]dic/.test(t)) return { txt: 'Pontos de atenção encontrados:\n\n1. Multa rescisória sem limite máximo. Sugestão: teto de 3 mensalidades.\n2. Prazos de aviso prévio diferentes para cada parte.\n3. Falta prazo para devolução e eliminação de dados ao fim do contrato.\n\nQuer que eu redija uma proposta de nova redação para cada item?' };
+  if (/resum|t[oó]picos|reuni/.test(t)) return { txt: '• Ponto principal: o pedido foi entendido e organizado em tópicos.\n• Decisão: seguir com a opção de menor risco.\n• Próximo passo: validar com o responsável até sexta-feira.' };
+  if (/plano|estrat|expans|marketing/.test(t)) return { txt: 'Proposta de plano em três frentes:\n\n1. Diagnóstico (2 semanas): levantar dados atuais e metas.\n2. Pilotos (6 semanas): duas iniciativas de baixo custo com métricas claras.\n3. Escala (trimestre seguinte): ampliar o que funcionou e encerrar o resto.\n\nPosso detalhar metas e responsáveis de cada fase.' };
+  return { txt: 'Entendi o pedido. No produto real, esta resposta viria do modelo escolhido pelo DOMINANCE. No protótipo, o importante é observar o selo abaixo: onde a resposta foi processada, quanto custou e quais regras foram aplicadas.' };
+}
+
+/* ===== Renderização ===== */
+function mark(size) { return `<svg class="mk" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><path d="M19 12 V38 M19 62 V88" stroke="currentColor" stroke-width="14" fill="none"/><path d="M12 19 H50 A31 31 0 0 1 50 81 H12" stroke="currentColor" stroke-width="14" fill="none"/><circle cx="50" cy="50" r="9" fill="#C9962F"/></svg>`; }
+function xpu(alias) { return { 'dominance-rapido': 'NPU · Core 800', 'dominance-local-pro': 'GPU 0–3 · Core 800' }[alias] || null; }
+function costOf(alias, tin, tout) { const m = MODELS[alias]; return (tin * m.pin + tout * m.pout) / 1e6; }
+function metaHTML(m, i) {
+  const md = MODELS[m.alias];
+  const steps = [['Identidade', `${U().nome} · ${U().equipe} · SSO`], ['Permissão', `${md.nome} autorizado`], ['Orçamento', `${Math.round(U().orc.usado / U().orc.limite * 100)}% do mês`], ['Dados', m.aviso || 'Sem dados sensíveis'], ['Cache', m.cache ? 'Acerto: custo zero' : 'Sem acerto'], ['Rota', `${md.modelo} · ${md.local ? 'MultiCortex · ' + xpu(m.alias) : 'nuvem'}`], ['Auditoria', `${nf.format(m.tin + m.tout)} tokens registrados`]];
+  return `<div class="meta">
+    <span class="pill ${md.local ? 'local' : 'cloud'}">${md.local ? 'Local' : 'Nuvem'} · ${md.nome}${m.auto ? ' (automático)' : ''}</span>
+    ${xpu(m.alias) ? `<span class="pill neutral">${xpu(m.alias)}</span>` : ''}
+    ${m.aviso ? m.aviso.split(' · ').map(a => `<span class="pill warn">${esc(a)}</span>`).join('') : ''}
+    ${m.cache ? '<span class="pill ok">Do cache</span>' : ''}
+    <span class="pill neutral">${nf.format(m.tin + m.tout)} tokens · ${usd(m.cache ? 0 : costOf(m.alias, m.tin, m.tout))}</span>
+    <button class="linkbtn" type="button" data-path="${i}" aria-expanded="${m.open ? 'true' : 'false'}">${m.open ? 'Ocultar caminho' : 'Ver caminho'}</button>
+  </div>
+  ${m.open ? `<div class="path">${steps.map((s, k) => `<div><span class="n">${k + 1}</span><span>${s[0]}</span><span style="color:var(--muted)">${esc(s[1])}</span></div>`).join('')}</div>` : ''}`;
+}
+function renderConvs() {
+  const list = S.convs[S.user];
+  $('convs').innerHTML = list.length ? list.map(c => `<button type="button" data-conv="${c.id}" class="${S.conv === c.id ? 'on' : ''}"><span class="${c.local ? 'dotlocal' : 'dotcloud'}" title="${c.local ? 'Processada localmente' : 'Usou modelo em nuvem'}"></span><span class="t">${esc(c.titulo)}</span></button>`).join('') : '<p style="color:var(--muted);font-size:13px;padding:6px 10px">Nenhuma conversa ainda.</p>';
+}
+function curConv() { return S.convs[S.user].find(c => c.id === S.conv); }
+function renderChat() {
+  const c = curConv();
+  $('title').textContent = c ? c.titulo : (S.assistente ? S.assistente.nome : 'Nova conversa');
+  if (!c || !c.msgs.length) {
+    const u = U();
+    $('view').innerHTML = `<div class="col"><div class="empty">${mark(52)}
+      <h2>Olá, ${esc(u.nome.split(' ')[0])}. Como posso ajudar?</h2>
+      <p>${u.sensivelLocal ? 'Como você está no Jurídico, pedidos com conteúdo sensível são processados na base local da empresa e não saem do ambiente.' : 'Dados pessoais como CPF, e-mail e telefone são mascarados antes de qualquer envio a modelos em nuvem.'}</p>
+      ${S.assistente ? `<span class="pill local">Assistente: ${esc(S.assistente.nome)}</span>` : ''}
+      <div class="starters">${starters().map((s, i) => `<button type="button" data-start="${i}">${esc(s[0])}<small>${esc(s[1])}</small></button>`).join('')}</div>
+    </div></div>`;
+    return;
+  }
+  $('view').innerHTML = `<div class="col">${c.msgs.map((m, i) => m.r === 'user'
+    ? `<div class="msg user"><div class="bubble">${esc(m.t)}</div>${m.anexo ? `<span class="chip">${esc(m.anexo)}</span>` : ''}</div>`
+    : m.blocked ? `<div class="blocked" role="alert">${esc(m.t)}</div>`
+    : `<div class="answer">${mark(26)}<div class="body"><div class="txt ${m.streaming ? 'caret' : ''}" id="${m.streaming ? 'stream' : ''}">${esc(m.t)}</div>${m.code && !m.streaming ? `<pre>${esc(m.code)}</pre>` : ''}${m.streaming ? '' : metaHTML(m, i)}</div></div>`).join('')}</div>`;
+  $('view').scrollTop = $('view').scrollHeight;
+}
+function starters() {
+  return { ana: [['Revisar cláusula de rescisão', 'Contrato confidencial · vai para a base local'], ['Checklist de due diligence', 'Pedido simples · modelo rápido'], ['Comparar duas minutas', 'Análise longa · modo automático'], ['Resumir a reunião de ontem', 'Gera decisões e próximos passos']],
+    carla: [['E-mail para cliente com CPF', 'Modelo Geral (nuvem) · mostra o mascaramento'], ['Plano de marketing do trimestre', 'Pedido longo · modelo em nuvem'], ['Post para o LinkedIn', 'No tom de voz da marca'], ['Resumir proposta enviada', 'Modelo rápido']],
+    diego: [['Regras de troca em 3 tópicos', 'Resposta rápida e local'], ['Responder cliente irritado', 'Rascunho de e-mail'], ['Usar o modelo Raciocínio', 'Mostra um pedido sem permissão'], ['Script de atendimento', 'Passo a passo']] }[S.user];
+}
+const STARTER_TEXT = {
+  ana: ['Quais os riscos da cláusula de rescisão do contrato confidencial com o fornecedor?', 'Monte um checklist curto de due diligence para contratar um fornecedor.', 'Compare as duas minutas de contrato e analise as diferenças de responsabilidade e multa.', 'Resuma em tópicos a reunião de ontem com decisões e próximos passos.'],
+  carla: ['@dominance-geral|Escreva um e-mail para o cliente João Silva, CPF 123.456.789-09, joao.silva@exemplo.com.br, confirmando a reunião.', 'Crie um plano de marketing para o próximo trimestre com metas e estratégia por canal.', 'Escreva um post curto para o LinkedIn anunciando nosso novo serviço.', 'Resuma em três tópicos a proposta enviada à Têxtil Aurora.'],
+  diego: ['Resuma em três tópicos as regras de troca de produto.', 'Escreva um e-mail para responder um cliente irritado com o atraso da entrega.', '__raciocinio__', 'Monte um script de atendimento para devolução de produto.']
+};
+
+function renderModelSel() {
+  const u = U();
+  $('model').innerHTML = `<option value="auto">Automático</option>` + Object.entries(MODELS).map(([a, m]) => `<option value="${a}" ${u.modelos.includes(a) ? '' : 'disabled'}>${m.nome} · ${m.local ? 'local' : 'nuvem'}${u.modelos.includes(a) ? '' : ' (sem acesso)'}</option>`).join('');
+  $('model').value = u.modelos.includes(S.alias) || S.alias === 'auto' ? S.alias : 'auto';
+}
+function renderChips() {
+  const c = [];
+  if (S.assistente) c.push(`<span class="chip">Assistente: ${esc(S.assistente.nome)} <button type="button" data-rm="as" aria-label="Remover assistente">×</button></span>`);
+  if (S.anexo) c.push(`<span class="chip">${esc(S.anexo)} <button type="button" data-rm="file" aria-label="Remover anexo">×</button></span>`);
+  $('chips').innerHTML = c.join(''); $('chips').style.paddingTop = c.length ? '10px' : '0';
+}
+function updateHint() {
+  const t = $('input').value, h = $('hint');
+  $('send').disabled = S.busy || t.trim().length < 2;
+  if (!t.trim() && !S.anexo) { h.className = 'hint'; h.textContent = 'Enter envia · Shift+Enter quebra linha'; return; }
+  const r = route(t || 'x', $('model').value);
+  if (r.blocked) { h.className = 'hint crit'; h.textContent = r.blocked; return; }
+  const m = MODELS[r.alias];
+  if (r.aviso.includes('sensível') || (m.local && (r.s.n || r.s.sens || S.anexo))) { h.className = 'hint local'; h.textContent = `Este pedido será processado na base local (${m.nome}). Nada sai do ambiente da empresa.`; return; }
+  if (r.aviso.includes('mascarados')) { const w = Object.entries(r.s.found).map(([k, v]) => `${v} ${k}`).join(', '); h.className = 'hint warn'; h.textContent = `Dados pessoais detectados (${w}). Serão mascarados antes de ir para a nuvem.`; return; }
+  h.className = 'hint'; h.textContent = `Vai para: ${m.nome} · ${m.local ? 'local' : 'nuvem'}${r.auto ? ' (escolha automática)' : ''}`;
+}
+
+async function send(text) {
+  if (S.busy) return;
+  const u = U();
+  if (text === '__raciocinio__') { text = 'Monte um plano de expansão do atendimento para 2027.'; S.alias = 'dominance-raciocinio'; }
+  if (text.startsWith('@')) { const [a, rest] = text.slice(1).split('|'); text = rest; S.alias = a; $('model').value = a; }
+  let c = curConv();
+  if (!c) { c = { id: 'c' + Date.now(), titulo: text.slice(0, 42) + (text.length > 42 ? '…' : ''), local: true, msgs: [] }; S.convs[S.user].unshift(c); S.conv = c.id; }
+  const anexo = S.anexo; S.anexo = null; renderChips();
+  c.msgs.push({ r: 'user', t: text, anexo });
+  const r = route(text + (anexo ? ' ' : ''), S.alias === 'dominance-raciocinio' && !u.modelos.includes('dominance-raciocinio') ? 'dominance-raciocinio' : $('model').value);
+  if (S.alias === 'dominance-raciocinio') S.alias = 'auto';
+  renderConvs(); renderChat();
+  if (r.blocked) { c.msgs.push({ r: 'bot', blocked: true, t: r.blocked }); renderChat(); updateHint(); return; }
+  S.busy = true; updateHint();
+  const a = answer(text, r.alias);
+  const prev = c.msgs.slice(0, -1).filter(m => m.r === 'user').some(m => m.t.trim().toLowerCase() === text.trim().toLowerCase());
+  const msg = { r: 'bot', t: '', alias: r.alias, auto: r.auto, aviso: r.aviso, streaming: true, tin: Math.ceil(text.length / 3.6) + (anexo ? 2400 : 0), tout: 0, cache: prev, code: a.code };
+  c.msgs.push(msg); if (!MODELS[r.alias].local) c.local = false;
+  renderChat();
+  await wait(MODELS[r.alias].local ? 350 : 700);
+  const words = a.txt.split(/(\s+)/);
+  for (let i = 0; i < words.length; i++) { msg.t += words[i]; if (i % 3 === 0) { const el = $('stream'); if (el) { el.textContent = msg.t; $('view').scrollTop = $('view').scrollHeight; } await wait(prev ? 4 : 22); } }
+  msg.t = a.txt; msg.streaming = false; msg.tout = Math.ceil((a.txt.length + (a.code || '').length) / 3.6);
+  if (!prev) u.orc.usado += costOf(r.alias, msg.tin, msg.tout);
+  u.tokens += msg.tin + msg.tout;
+  S.reqLog.unshift({ quando: new Date().toTimeString().slice(0, 5), alias: r.alias, tokens: msg.tin + msg.tout, custo: prev ? 0 : costOf(r.alias, msg.tin, msg.tout), aviso: r.aviso || (prev ? 'Cache' : '—') });
+  S.busy = false; renderChat(); renderConvs(); updateHint();
+}
+
+function renderAssistants() {
+  $('title').textContent = 'Agentes e conectores';
+  const u = U();
+  $('view').innerHTML = `<div class="col"><div><h2 style="font-size:24px">Agentes da empresa</h2><p style="color:var(--muted);margin-top:4px">Configurados pela TI no DOMINANCE Governance. Cada um já sabe qual modelo usar e quais dados pode ver.</p></div>
+  <div class="grid">${ASSISTANTS.map(a => { const m = MODELS[a.alias]; const ok = u.modelos.includes(a.alias) && (a.equipe === 'Todas' || a.equipe === u.equipe);
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h3 style="font-size:17px">${a.nome}</h3><span class="pill ${m.local ? 'local' : 'cloud'}">${m.local ? 'Local' : 'Nuvem'}</span></div>
+    <p>${a.desc}</p><p style="font-size:12.5px">Base: ${a.base}</p>
+    <div class="foot"><span class="pill neutral">Equipe: ${a.equipe}</span>${ok ? `<button class="btn primary" type="button" data-use="${a.id}">Usar</button>` : '<span class="pill crit">Sem acesso</span>'}</div></div>`; }).join('')}</div>
+  <div><h2 style="font-size:24px">Conectores</h2><p style="color:var(--muted);margin-top:4px">Fontes de dados que os agentes podem consultar. Os documentos são indexados e lidos dentro da base local.</p></div>
+  <div class="grid">${CONNECTORS.map(c => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h3 style="font-size:17px">${c[0]}</h3><span class="pill ${c[2] === 'conectado' ? 'ok' : 'neutral'}">${c[2]}</span></div><p>${c[1]}</p><div class="foot"><span class="pill local">Indexado localmente</span><span style="font-size:12.5px;color:var(--muted)">${c[3]}</span></div></div>`).join('')}</div></div>`;
+}
+function renderUsage() {
+  $('title').textContent = 'Meu uso e regras';
+  const u = U(), pct = u.orc.usado / u.orc.limite * 100;
+  const pols = [['Dados pessoais são mascarados', 'CPF, CNPJ, e-mail e telefone viram marcadores antes de sair para modelos em nuvem.'],
+    u.sensivelLocal ? ['Conteúdo sensível fica na empresa', 'Contratos, processos e documentos confidenciais são respondidos pela base local (MultiCortex).'] : null,
+    ['O texto das conversas não vai para a auditoria', 'A TI vê quem usou qual modelo e quanto custou, mas não o conteúdo do que você escreveu.'],
+    ['Modelos liberados para ' + u.equipe, u.modelos.map(a => MODELS[a].nome).join(', ') + '.']].filter(Boolean);
+  $('view').innerHTML = `<div class="col"><div><h2 style="font-size:24px">Meu uso em novembro</h2><p style="color:var(--muted);margin-top:4px">Transparência para o colaborador: o que você consumiu e quais regras valem para você.</p></div>
+  <div class="kpis"><div class="kpi"><small>Tokens no mês</small><b>${(u.tokens / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} mi</b></div>
+  <div class="kpi"><small>Processado localmente</small><b style="color:var(--gold-ink)">${Math.round(u.local * 100)}%</b></div>
+  <div class="kpi"><small>Orçamento da equipe ${u.equipe}</small><b>${Math.round(pct)}%</b><div class="track" style="margin-top:6px"><span style="width:${Math.min(100, pct)}%;background:${pct >= 100 ? 'var(--crit)' : pct >= 80 ? 'var(--warn)' : 'var(--accent)'}"></span></div></div></div>
+  <div class="card"><h3 style="font-size:16px">Regras que se aplicam a você</h3>${pols.map(p => `<div class="pol">${mark(18)}<div><b style="font-weight:500">${p[0]}</b><p>${p[1]}</p></div></div>`).join('')}</div>
+  <div class="card"><h3 style="font-size:16px">Pedidos desta sessão</h3>${S.reqLog.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Hora</th><th>Modelo</th><th>Regra aplicada</th><th class="r">Tokens</th><th class="r">Custo</th></tr></thead><tbody>${S.reqLog.map(r => `<tr><td>${r.quando}</td><td>${MODELS[r.alias].nome} <span class="pill ${MODELS[r.alias].local ? 'local' : 'cloud'}">${MODELS[r.alias].local ? 'local' : 'nuvem'}</span></td><td>${esc(r.aviso)}</td><td class="r">${nf.format(r.tokens)}</td><td class="r">${usd(r.custo)}</td></tr>`).join('')}</tbody></table></div>` : '<p>Envie uma mensagem em Conversas e ela aparece aqui.</p>'}</div></div>`;
+}
+
+function show() {
+  const v = location.hash.replace('#', '') || 'conversa';
+  S.view = ['conversa', 'agentes', 'meu-uso'].includes(v) ? v : 'conversa';
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.v === S.view));
+  $('composer-wrap').style.display = S.view === 'conversa' ? '' : 'none';
+  ({ conversa: renderChat, agentes: renderAssistants, 'meu-uso': renderUsage })[S.view]();
+  $('side').classList.remove('open');
+}
+function setUser(k) {
+  S.user = k; S.conv = null; $('input').value = ''; S.assistente = null; S.anexo = null; S.alias = 'auto';
+  const u = U(); $('av').textContent = u.ini; $('me-name').textContent = u.nome; $('me-team').textContent = u.equipe;
+  $('shield-txt').textContent = u.sensivelLocal ? 'Protegido · conteúdo sensível local' : 'Protegido pelo DOMINANCE';
+  renderModelSel(); renderConvs(); renderChips(); show(); updateHint();
+}
+
+/* ===== Eventos ===== */
+$('composer').addEventListener('submit', e => { e.preventDefault(); const t = $('input').value.trim(); if (t.length < 2) return; $('input').value = ''; send(t); });
+$('input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); } });
+$('input').addEventListener('input', () => { const el = $('input'); el.style.height = 'auto'; el.style.height = Math.min(200, el.scrollHeight) + 'px'; updateHint(); });
+$('model').addEventListener('change', e => { S.alias = e.target.value; updateHint(); });
+$('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) { S.anexo = f.name; renderChips(); updateHint(); if (!$('input').value) $('input').placeholder = 'Diga o que fazer com o arquivo anexado'; } e.target.value = ''; });
+$('chips').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (!b) return; if (b.dataset.rm === 'file') S.anexo = null; else { S.assistente = null; S.alias = 'auto'; renderModelSel(); } renderChips(); updateHint(); if (S.view === 'conversa' && !curConv()) renderChat(); });
+$('convs').addEventListener('click', e => { const b = e.target.closest('[data-conv]'); if (!b) return; S.conv = b.dataset.conv; renderConvs(); if (location.hash !== '#conversa') location.hash = 'conversa'; else show(); });
+$('newchat').addEventListener('click', () => { S.conv = null; S.assistente = null; S.alias = 'auto'; renderModelSel(); renderChips(); renderConvs(); if (location.hash !== '#conversa') location.hash = 'conversa'; else show(); $('input').focus(); });
+$('view').addEventListener('click', e => {
+  const st = e.target.closest('[data-start]'); if (st) { send(STARTER_TEXT[S.user][+st.dataset.start]); return; }
+  const p = e.target.closest('[data-path]'); if (p) { const m = curConv().msgs[+p.dataset.path]; m.open = !m.open; renderChat(); return; }
+  const u = e.target.closest('[data-use]'); if (u) { S.assistente = ASSISTANTS.find(a => a.id === u.dataset.use); S.conv = null; S.alias = S.assistente.alias; renderModelSel(); renderChips(); renderConvs(); location.hash = 'conversa'; setTimeout(() => $('input').focus(), 50); }
+});
+$('as').addEventListener('change', e => setUser(e.target.value));
+$('menu').addEventListener('click', () => $('side').classList.toggle('open'));
+$('shield').addEventListener('click', () => {
+  const u = U();
+  $('modal').innerHTML = `<h2 id="mt" style="font-size:20px">Como o DOMINANCE protege esta conversa</h2>
+  <p style="color:var(--muted)">Todo pedido passa por sete verificações antes de chegar a um modelo: identidade, permissão, orçamento, política de dados, cache, rota e auditoria.</p>
+  <div class="path"><div><span class="n">1</span><span>Você entrou com o login da empresa</span><span></span></div><div><span class="n">2</span><span>Modelos liberados para ${u.equipe}: ${u.modelos.map(a => MODELS[a].nome).join(', ')}</span><span></span></div><div><span class="n">3</span><span>Orçamento da equipe: ${Math.round(u.orc.usado / u.orc.limite * 100)}% usado</span><span></span></div><div><span class="n">4</span><span>${u.sensivelLocal ? 'Conteúdo sensível fica na base local' : 'Dados pessoais mascarados antes da nuvem'}</span><span></span></div></div>
+  <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="button" id="mclose">Entendi</button></div>`;
+  $('overlay').classList.add('on'); $('mclose').focus(); $('mclose').onclick = () => { $('overlay').classList.remove('on'); $('shield').focus(); };
+});
+$('overlay').addEventListener('click', e => { if (e.target === $('overlay')) $('overlay').classList.remove('on'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('overlay').classList.remove('on'); });
+window.addEventListener('hashchange', show);
+
+S.conv = 's1';
+setUser('ana'); S.conv = 's1'; renderConvs(); show();
+</script>
+</body>
+</html>

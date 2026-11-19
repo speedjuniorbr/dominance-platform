@@ -1,0 +1,944 @@
+openapi: 3.1.0
+info:
+  title: DOMINANCE API
+  version: 0.1.0
+  summary: Gateway de IA e API administrativa do plano de governança DOMINANCE.
+  description: |
+    Contrato único usado pelo protótipo (Fase 1, com dados simulados) e pelo MVP (Fase 2, com backend real).
+
+    Dois grupos de endpoints:
+    - **Gateway** (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`): compatível com o formato OpenAI.
+      Aplicativos trocam apenas a URL base e a chave. Autenticação por chave virtual (`dmn_live_...`).
+    - **Administração** (`/v1/admin/*`): usada pelo console. Autenticação por token OIDC do SSO corporativo.
+
+    Regras do contrato:
+    - Valores monetários em USD, número decimal, campo com sufixo `_usd`.
+    - Datas em ISO 8601 (UTC). Identificadores são strings opacas.
+    - Erros sempre no formato `Error`.
+    - O segredo completo de uma chave virtual só aparece na resposta de criação.
+    - O texto dos prompts nunca é devolvido pela API administrativa.
+  contact:
+    name: AxiosTech Solutions
+servers:
+  - url: http://localhost:4010
+    description: Mock local gerado a partir deste contrato (Prism) na Fase 1
+  - url: https://api.dominance.app
+    description: SaaS (AWS sa-east-1)
+  - url: https://dominance.{cliente}.local
+    description: Instalação local no ambiente do cliente (híbrido ou soberano)
+    variables:
+      cliente:
+        default: crtc
+tags:
+  - name: Gateway
+  - name: Uso
+  - name: Acesso
+  - name: Conectores
+  - name: Catálogo
+  - name: Políticas
+  - name: Orçamentos
+  - name: Auditoria
+  - name: Implantação
+  - name: Público
+
+paths:
+  /v1/chat/completions:
+    post:
+      tags: [Gateway]
+      operationId: createChatCompletion
+      summary: Envia uma conversa a um modelo do catálogo, passando pelo pipeline de governança.
+      description: |
+        Pipeline aplicado, nesta ordem: identidade → permissão do modelo → orçamento da equipe →
+        políticas de dados (mascaramento, rota local) → cache → roteamento/fallback → medição e auditoria.
+        `model` deve ser um alias do catálogo (ex.: `dominance-rapido`).
+      security: [{ virtualKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatCompletionRequest' }
+      responses:
+        '200':
+          description: Resposta do modelo, no formato OpenAI.
+          headers:
+            x-dominance-request-id: { schema: { type: string }, description: Id do registro de auditoria. }
+            x-dominance-route: { schema: { type: string }, description: 'Alias e provedor efetivos, ex.: dominance-local-pro@p-mc' }
+            x-dominance-cache: { schema: { type: string, enum: [hit, miss, off] } }
+            x-dominance-cost-usd: { schema: { type: number } }
+            x-dominance-policies: { schema: { type: string }, description: 'Ids das políticas que alteraram o pedido, separados por vírgula.' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatCompletionResponse' }
+            text/event-stream:
+              schema: { type: string, description: Streaming SSE no formato OpenAI quando stream=true. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/BudgetExceeded' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+
+  /v1/embeddings:
+    post:
+      tags: [Gateway]
+      operationId: createEmbedding
+      summary: Gera embeddings por um alias do catálogo (mesmas políticas do chat).
+      security: [{ virtualKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model: { type: string }
+                input:
+                  oneOf:
+                    - { type: string }
+                    - { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Embeddings no formato OpenAI.
+          content:
+            application/json:
+              schema: { type: object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/models:
+    get:
+      tags: [Gateway]
+      operationId: listAllowedModels
+      summary: Lista os aliases que a chave virtual pode usar (formato OpenAI).
+      security: [{ virtualKey: [] }]
+      responses:
+        '200':
+          description: Lista de modelos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, const: list }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, examples: [dominance-rapido] }
+                        object: { type: string, const: model }
+                        owned_by: { type: string, examples: [dominance] }
+
+  /v1/admin/usage/summary:
+    get:
+      tags: [Uso]
+      operationId: getUsageSummary
+      summary: Indicadores do período (tokens, custo, % local, economia, bloqueios).
+      security: [{ oidc: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Days'
+        - $ref: '#/components/parameters/TeamFilter'
+      responses:
+        '200':
+          description: Resumo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSummary' }
+
+  /v1/admin/usage:
+    get:
+      tags: [Uso]
+      operationId: listUsage
+      summary: Consumo agregado por equipe, usuário, modelo, provedor ou dia.
+      security: [{ oidc: [] }]
+      parameters:
+        - name: group_by
+          in: query
+          required: true
+          schema: { type: string, enum: [team, user, model, provider, day] }
+        - $ref: '#/components/parameters/Days'
+        - $ref: '#/components/parameters/TeamFilter'
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, csv], default: json }
+      responses:
+        '200':
+          description: Linhas agregadas, ordenadas por custo decrescente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_by: { type: string }
+                  rows:
+                    type: array
+                    items: { $ref: '#/components/schemas/UsageRow' }
+            text/csv:
+              schema: { type: string }
+
+  /v1/admin/teams:
+    get:
+      tags: [Acesso]
+      operationId: listTeams
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Equipes.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Team' } }
+    post:
+      tags: [Acesso]
+      operationId: createTeam
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeamInput' }
+      responses:
+        '201':
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/admin/teams/{team_id}:
+    patch:
+      tags: [Acesso]
+      operationId: updateTeam
+      summary: Altera nome ou modelos permitidos da equipe.
+      security: [{ oidc: [] }]
+      parameters: [{ $ref: '#/components/parameters/TeamId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TeamInput' }
+      responses:
+        '200':
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/users:
+    get:
+      tags: [Acesso]
+      operationId: listUsers
+      security: [{ oidc: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TeamFilter'
+      responses:
+        '200':
+          description: Pessoas da organização.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/User' } }
+    post:
+      tags: [Acesso]
+      operationId: inviteUser
+      summary: Convida uma pessoa. O acesso efetivo acontece no primeiro login via SSO.
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserInvite' }
+      responses:
+        '201':
+          description: Convite criado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/users/{user_id}:
+    patch:
+      tags: [Acesso]
+      operationId: updateUser
+      security: [{ oidc: [] }]
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                team_id: { type: string }
+                role: { $ref: '#/components/schemas/Role' }
+                status: { type: string, enum: [active, suspended] }
+      responses:
+        '200':
+          description: Atualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /v1/admin/keys:
+    get:
+      tags: [Acesso]
+      operationId: listKeys
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Chaves virtuais (sem o segredo).
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/VirtualKey' } }
+    post:
+      tags: [Acesso]
+      operationId: createKey
+      summary: Cria uma chave virtual. O segredo completo só é devolvido aqui; o servidor guarda apenas o hash.
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VirtualKeyInput' }
+      responses:
+        '201':
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VirtualKeyCreated' }
+
+  /v1/admin/keys/{key_id}:
+    delete:
+      tags: [Acesso]
+      operationId: revokeKey
+      summary: Revoga a chave. Chamadas seguintes recebem 401.
+      security: [{ oidc: [] }]
+      parameters:
+        - { name: key_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Revogada. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/providers:
+    get:
+      tags: [Conectores]
+      operationId: listProviders
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Conectores de bases de inferência.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Provider' } }
+    post:
+      tags: [Conectores]
+      operationId: createProvider
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderInput' }
+      responses:
+        '201':
+          description: Criado; status inicial "checking".
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Provider' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/admin/providers/{provider_id}:
+    patch:
+      tags: [Conectores]
+      operationId: updateProvider
+      security: [{ oidc: [] }]
+      parameters: [{ $ref: '#/components/parameters/ProviderId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderInput' }
+      responses:
+        '200':
+          description: Atualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Provider' }
+
+  /v1/admin/providers/{provider_id}/health:
+    get:
+      tags: [Conectores]
+      operationId: checkProviderHealth
+      summary: Testa conexão, latência e modelos carregados (para bases locais, também uso de GPU quando exposto).
+      security: [{ oidc: [] }]
+      parameters: [{ $ref: '#/components/parameters/ProviderId' }]
+      responses:
+        '200':
+          description: Resultado do teste.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHealth' }
+
+  /v1/admin/models:
+    get:
+      tags: [Catálogo]
+      operationId: listCatalog
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Catálogo de modelos homologados.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/CatalogModel' } }
+    post:
+      tags: [Catálogo]
+      operationId: addCatalogModel
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogModel' }
+      responses:
+        '201':
+          description: Adicionado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogModel' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/models/{alias}:
+    patch:
+      tags: [Catálogo]
+      operationId: updateCatalogModel
+      security: [{ oidc: [] }]
+      parameters:
+        - { name: alias, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogModel' }
+      responses:
+        '200':
+          description: Atualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogModel' }
+
+  /v1/admin/policies:
+    get:
+      tags: [Políticas]
+      operationId: listPolicies
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Políticas.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Policy' } }
+    post:
+      tags: [Políticas]
+      operationId: createPolicy
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyInput' }
+      responses:
+        '201':
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+
+  /v1/admin/policies/{policy_id}:
+    patch:
+      tags: [Políticas]
+      operationId: updatePolicy
+      summary: Ativa, desativa ou altera escopo e parâmetros.
+      security: [{ oidc: [] }]
+      parameters:
+        - { name: policy_id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyInput' }
+      responses:
+        '200':
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+
+  /v1/admin/budgets:
+    get:
+      tags: [Orçamentos]
+      operationId: listBudgets
+      summary: Orçamentos do mês corrente com o valor já usado.
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Orçamentos por equipe.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Budget' } }
+
+  /v1/admin/budgets/{team_id}:
+    put:
+      tags: [Orçamentos]
+      operationId: setBudget
+      security: [{ oidc: [] }]
+      parameters: [{ $ref: '#/components/parameters/TeamId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BudgetInput' }
+      responses:
+        '200':
+          description: Salvo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Budget' }
+
+  /v1/admin/audit:
+    get:
+      tags: [Auditoria]
+      operationId: listAuditEvents
+      summary: Eventos de governança e de uso. Nunca contém o texto dos prompts.
+      security: [{ oidc: [] }]
+      parameters:
+        - name: level
+          in: query
+          schema: { type: string, enum: [info, warning, blocked] }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/AuditType' }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 } }
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, csv], default: json }
+      responses:
+        '200':
+          description: Página de eventos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+                  next_cursor: { type: [string, 'null'] }
+            text/csv:
+              schema: { type: string }
+
+  /v1/admin/deployment:
+    get:
+      tags: [Implantação]
+      operationId: getDeployment
+      security: [{ oidc: [] }]
+      responses:
+        '200':
+          description: Configuração de implantação da organização.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deployment' }
+    put:
+      tags: [Implantação]
+      operationId: setDeployment
+      security: [{ oidc: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Deployment' }
+      responses:
+        '200':
+          description: Salva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Deployment' }
+
+  /v1/public/waitlist:
+    post:
+      tags: [Público]
+      operationId: joinWaitlist
+      summary: Inscrição de organização interessada no piloto (landing page).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaitlistEntry' }
+      responses:
+        '202': { description: Recebida. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+components:
+  securitySchemes:
+    virtualKey:
+      type: http
+      scheme: bearer
+      description: Chave virtual DOMINANCE (prefixo dmn_live_ ou dmn_test_).
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://sso.exemplo.com/.well-known/openid-configuration
+      description: Token do SSO corporativo (Keycloak federado com Entra ID, Google etc.).
+
+  parameters:
+    Days:
+      name: days
+      in: query
+      schema: { type: integer, enum: [7, 14, 30, 90], default: 30 }
+    TeamFilter:
+      name: team_id
+      in: query
+      schema: { type: string }
+    TeamId:
+      name: team_id
+      in: path
+      required: true
+      schema: { type: string }
+    ProviderId:
+      name: provider_id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Pedido inválido.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Chave ou token ausente, inválido ou revogado.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Modelo não homologado ou não permitido para a equipe.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Recurso não encontrado.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Recurso já existe.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BudgetExceeded:
+      description: Orçamento mensal da equipe atingido (ação "block").
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    UpstreamError:
+      description: Provedor e fallback falharam.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [invalid_request, invalid_key, key_revoked, model_not_allowed, model_not_in_catalog, budget_exceeded, policy_blocked, upstream_error, not_found, conflict]
+            message: { type: string, description: Mensagem em português, pronta para o usuário final. }
+            request_id: { type: string }
+
+    Role:
+      type: string
+      enum: [admin, manager, user]
+      description: admin = administrador, manager = gestor da equipe, user = usuário.
+
+    Team:
+      type: object
+      required: [id, name, allowed_models]
+      properties:
+        id: { type: string, examples: [t-jur] }
+        name: { type: string, examples: [Jurídico] }
+        allowed_models:
+          description: Lista de aliases, ou ["*"] para todo o catálogo.
+          type: array
+          items: { type: string }
+    TeamInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 60 }
+        allowed_models: { type: array, items: { type: string } }
+
+    User:
+      type: object
+      required: [id, name, email, team_id, role, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        team_id: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [active, invited, suspended] }
+        last_login_at: { type: [string, 'null'], format: date-time }
+    UserInvite:
+      type: object
+      required: [name, email, team_id, role]
+      properties:
+        name: { type: string, minLength: 3 }
+        email: { type: string, format: email }
+        team_id: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+
+    VirtualKey:
+      type: object
+      required: [id, name, prefix, team_id, status, created_at]
+      properties:
+        id: { type: string }
+        name: { type: string, pattern: '^[a-z0-9-]{3,40}$' }
+        prefix: { type: string, examples: [dmn_live_7Qx2] }
+        team_id: { type: string, description: 'Id da equipe dona da chave, ou "*" para uso organizacional.' }
+        allowed_models: { type: array, items: { type: string }, description: 'Opcional: restringe além da equipe.' }
+        status: { type: string, enum: [active, revoked] }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+    VirtualKeyInput:
+      type: object
+      required: [name, team_id]
+      properties:
+        name: { type: string, pattern: '^[a-z0-9-]{3,40}$' }
+        team_id: { type: string }
+        allowed_models: { type: array, items: { type: string } }
+        expires_at: { type: [string, 'null'], format: date-time }
+    VirtualKeyCreated:
+      allOf:
+        - $ref: '#/components/schemas/VirtualKey'
+        - type: object
+          required: [secret]
+          properties:
+            secret: { type: string, description: Segredo completo. Exibido uma única vez. }
+
+    ProviderType:
+      type: string
+      enum: [multicortex, nvidia_nim, nutanix_ai, ollama, vllm, openai_compatible, openai, anthropic, vertex, bedrock, azure_openai]
+      description: Cada tipo corresponde a um adaptador no gateway. Bases locais usam o formato compatível com OpenAI.
+    Provider:
+      type: object
+      required: [id, name, type, location, endpoint, status]
+      properties:
+        id: { type: string, examples: [p-mc] }
+        name: { type: string, examples: [MultiCortex OS · Lab CRTC] }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        location: { type: string, enum: [local, cloud] }
+        engine: { type: [string, 'null'], examples: [vLLM] }
+        endpoint: { type: string, examples: ['https://mc-lab.crtc.local:8000/v1'] }
+        secret_ref: { type: string, description: 'Referência ao cofre: vault://, aws-sm:// ou env://. Nunca a chave em texto.' }
+        fallback_provider_id: { type: [string, 'null'] }
+        status: { type: string, enum: [online, degraded, offline, checking, planned] }
+        latency_ms: { type: [integer, 'null'] }
+    ProviderInput:
+      type: object
+      required: [name, type, location, endpoint, secret_ref]
+      properties:
+        name: { type: string, minLength: 3 }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        location: { type: string, enum: [local, cloud] }
+        engine: { type: [string, 'null'] }
+        endpoint: { type: string, pattern: '^https://' }
+        secret_ref: { type: string, pattern: '^(vault|aws-sm|env)://' }
+        fallback_provider_id: { type: [string, 'null'] }
+    ProviderHealth:
+      type: object
+      properties:
+        status: { type: string, enum: [online, degraded, offline] }
+        latency_ms: { type: integer }
+        models_loaded: { type: array, items: { type: string } }
+        accelerator_utilization_pct: { type: [number, 'null'], description: Apenas bases locais que exponham métricas. }
+        checked_at: { type: string, format: date-time }
+
+    CatalogModel:
+      type: object
+      required: [alias, provider_id, upstream_model, price_in_per_mtok_usd, price_out_per_mtok_usd]
+      properties:
+        alias: { type: string, pattern: '^dominance-[a-z0-9-]+$', examples: [dominance-rapido] }
+        provider_id: { type: string }
+        upstream_model: { type: string, examples: [llama-3.1-8b-instruct] }
+        price_in_per_mtok_usd: { type: number, description: Para bases locais, custo interno estimado. }
+        price_out_per_mtok_usd: { type: number }
+        max_context_tokens: { type: integer }
+        capabilities:
+          type: array
+          items: { type: string, enum: [chat, tools, vision, embeddings, streaming] }
+        enabled: { type: boolean, default: true }
+
+    PolicyKind:
+      type: string
+      enum: [pii_mask, local_only_sensitive, no_prompt_retention, catalog_only, response_cache, provider_fallback, max_context]
+    Policy:
+      type: object
+      required: [id, name, kind, enabled, scope]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { $ref: '#/components/schemas/PolicyKind' }
+        description: { type: string }
+        enabled: { type: boolean }
+        scope:
+          type: object
+          properties:
+            team_ids: { type: array, items: { type: string }, description: 'Vazio = organização inteira.' }
+        params:
+          type: object
+          description: |
+            Parâmetros por tipo. Exemplos:
+            pii_mask: { entities: [CPF, CNPJ, EMAIL, PHONE] }
+            local_only_sensitive: { keywords: [contrato, processo, sigiloso], target_alias: dominance-local-pro }
+            response_cache: { ttl_seconds: 86400 }
+            provider_fallback: { timeout_ms: 5000 }
+            max_context: { max_tokens: 32000 }
+          additionalProperties: true
+    PolicyInput:
+      type: object
+      properties:
+        name: { type: string }
+        kind: { $ref: '#/components/schemas/PolicyKind' }
+        description: { type: string }
+        enabled: { type: boolean }
+        scope: { type: object, properties: { team_ids: { type: array, items: { type: string } } } }
+        params: { type: object, additionalProperties: true }
+
+    Budget:
+      type: object
+      required: [team_id, month, limit_usd, used_usd, alert_pct, action]
+      properties:
+        team_id: { type: string }
+        month: { type: string, examples: ['2026-11'] }
+        limit_usd: { type: number }
+        used_usd: { type: number }
+        used_pct: { type: number }
+        alert_pct: { type: integer, minimum: 10, maximum: 99 }
+        action: { type: string, enum: [block, alert_only] }
+    BudgetInput:
+      type: object
+      required: [limit_usd, alert_pct, action]
+      properties:
+        limit_usd: { type: number, exclusiveMinimum: 0, maximum: 100000 }
+        alert_pct: { type: integer, minimum: 10, maximum: 99 }
+        action: { type: string, enum: [block, alert_only] }
+
+    UsageSummary:
+      type: object
+      properties:
+        days: { type: integer }
+        requests: { type: integer }
+        tokens_total: { type: integer }
+        tokens_local: { type: integer }
+        local_pct: { type: number }
+        cost_usd: { type: number }
+        savings_usd: { type: number, description: Comparado ao mesmo volume enviado ao modelo de referência em nuvem. }
+        reference_alias: { type: string, examples: [dominance-geral] }
+        cache_hits: { type: integer }
+        blocked_requests: { type: integer }
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              tokens_local: { type: integer }
+              tokens_cloud: { type: integer }
+              cost_usd: { type: number }
+    UsageRow:
+      type: object
+      properties:
+        key: { type: string, description: Id do grupo (equipe, usuário, alias, provedor ou data). }
+        label: { type: string }
+        requests: { type: integer }
+        tokens_in: { type: integer }
+        tokens_out: { type: integer }
+        tokens_local: { type: integer }
+        cost_usd: { type: number }
+        savings_usd: { type: number }
+
+    AuditType:
+      type: string
+      enum: [usage, policy, routing, blocked, budget, access, key, provider, config, resilience]
+    AuditEvent:
+      type: object
+      required: [id, at, actor, type, level, message]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        actor: { type: string, description: 'Id do usuário, da chave ou "system".' }
+        type: { $ref: '#/components/schemas/AuditType' }
+        level: { type: string, enum: [info, warning, blocked] }
+        message: { type: string }
+        request_id: { type: [string, 'null'] }
+        metadata:
+          type: object
+          description: 'Alias, provedor, tokens, custo, políticas aplicadas. Nunca o texto do prompt.'
+          additionalProperties: true
+
+    Deployment:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [saas, hybrid, sovereign] }
+        default_local_provider_id: { type: [string, 'null'] }
+        audit_retention_days: { type: integer, enum: [30, 90, 365, 1825] }
+        sso:
+          type: object
+          properties:
+            issuer: { type: string, pattern: '^https://' }
+            client_id: { type: string, minLength: 3 }
+
+    WaitlistEntry:
+      type: object
+      required: [name, email, organization, ai_users_range, deployment_interest]
+      properties:
+        name: { type: string, minLength: 3 }
+        email: { type: string, format: email }
+        organization: { type: string, minLength: 2 }
+        ai_users_range: { type: string, enum: ['ate-50', '51-250', '251-1000', '1000+'] }
+        deployment_interest: { type: string, enum: [saas, hybrid, sovereign, unknown] }
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [system, user, assistant, tool] }
+        content:
+          oneOf:
+            - { type: string }
+            - { type: array, items: { type: object } }
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model: { type: string, description: Alias do catálogo. }
+        messages: { type: array, items: { $ref: '#/components/schemas/ChatMessage' } }
+        temperature: { type: number }
+        max_tokens: { type: integer }
+        stream: { type: boolean, default: false }
+        tools: { type: array, items: { type: object } }
+        user: { type: string, description: Id do usuário final, quando a chave é de um aplicativo compartilhado. }
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id: { type: string }
+        object: { type: string, const: chat.completion }
+        created: { type: integer }
+        model: { type: string, description: Alias efetivo após roteamento. }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              message: { $ref: '#/components/schemas/ChatMessage' }
+              finish_reason: { type: string }
+        usage:
+          type: object
+          properties:
+            prompt_tokens: { type: integer }
+            completion_tokens: { type: integer }
+            total_tokens: { type: integer }
